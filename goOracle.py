@@ -7,7 +7,7 @@ It depends on the oracle tool being installed:
 go get code.google.com/p/go.tools/cmd/oracle
 """
 
-import sublime, sublime_plugin, subprocess, time, re
+import sublime, sublime_plugin, subprocess, re
 
 class GoOracleCommand(sublime_plugin.TextCommand):
     def run(self, edit, mode=None):
@@ -60,7 +60,7 @@ class GoOracleCommand(sublime_plugin.TextCommand):
         # Run a new command to use the edit object for this view.
         view.run_command('go_oracle_write_running', {'mode': mode})
 
-        if get_setting("output", "buffer") == "output_panel":
+        if get_setting(self.view, "output", "buffer") == "output_panel":
             window.run_command('show_panel', {'panel': "output." + view.name() })
         else:
             window.focus_view(view)
@@ -77,7 +77,7 @@ class GoOracleCommand(sublime_plugin.TextCommand):
             'result': result,
             'err': err})
 
-        if get_setting("output", "buffer") == "output_panel":
+        if get_setting(self.view, "output", "buffer") == "output_panel":
             window.run_command('show_panel', {'panel': "output." + view.name() })
         else:
             window.focus_view(view)
@@ -101,7 +101,7 @@ class GoOracleCommand(sublime_plugin.TextCommand):
         pos = "#" + str(end_offset)
         if begin_offset is not None:
             pos = "#%i,#%i" %(begin_offset, end_offset)
-        env = get_setting("env")
+        env = get_setting(self.view, "env")
 
         # Build oracle cmd.
         cmd = "export GOPATH=\"%(go_path)s\"; export GOROOT=\"%(go_root)s\"; export PATH=%(path)s; oracle -pos=%(file_path)s:%(pos)s -format=%(output_format)s %(mode)s %(scope)s"  % {
@@ -110,9 +110,9 @@ class GoOracleCommand(sublime_plugin.TextCommand):
         "path": env["PATH"],
         "file_path": self.view.file_name(),
         "pos": pos,
-        "output_format": get_setting("oracle_format"),
+        "output_format": get_setting(self.view, "oracle_format"),
         "mode": mode,
-        "scope": ' '.join(get_setting("oracle_scope"))} 
+        "scope": ' '.join(get_setting(self.view, "oracle_scope"))}
 
         sublime.set_timeout_async(lambda: self.runInThread(cmd, callback), 0)
 
@@ -153,7 +153,7 @@ class GoOracleWriteRunningCommand(sublime_plugin.TextCommand):
 
 class GoOracleShowResultsCommand(sublime_plugin.TextCommand):
     def run(self, edit):
-        if get_setting("output", "buffer") == "output_panel":
+        if get_setting(self.view, "output", "buffer") == "output_panel":
             self.view.window().run_command('show_panel', {'panel': "output.Oracle Output" })
         else:
             output_view = get_output_view(self.view.window())
@@ -175,7 +175,7 @@ class GoOracleOpenResultCommand(sublime_plugin.EventListener):
         line = view.full_line(lines[0])
         text = view.substr(line)
 
-        format = get_setting("oracle_format")
+        # format = get_setting(view, "oracle_format")
 
         # "filename:line:col" pattern for json
         m = re.search("\"([^\"]+):([0-9]+):([0-9]+)\"", text)
@@ -197,23 +197,33 @@ class GoOracleOpenResultCommand(sublime_plugin.EventListener):
 
 
 
-def get_setting(key, default=None):
-    """ Returns the user setting if found, otherwise it returns the
-    default setting. If neither are set the 'default' value passed in is returned.
+def get_setting(view, key, default=None):
+    """
+    Returns:
+     - the project setting
+     - the user setting
+     - default setting.
+
+    If neither are set the 'default' value passed in is returned.
     """
 
-    val = sublime.load_settings("User.sublime-settings").get(key)
-    if not val:
-        val = sublime.load_settings("Default.sublime-settings").get(key)
-    if not val:
-        val = default
-    return val
+    if view and view.settings():
+        s = view.settings().get('GoOracle', {})
+        if s and key in s: return s[key]
+
+    s = sublime.load_settings("User.sublime-settings")
+    if s and key in s: return s[key]
+
+    s = sublime.load_settings("Default.sublime-settings")
+    if s and key in s: return s[key]
+
+    return default
 
 def get_output_view(window):
     view = None
     buff_name = 'Oracle Output'
 
-    if get_setting("output", "buffer") == "output_panel":
+    if get_setting(window.views()[0], "output", "buffer") == "output_panel":
         view = window.create_output_panel(buff_name)
     else:
         # If the output file is already open, use that.
